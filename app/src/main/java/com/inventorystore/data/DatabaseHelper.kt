@@ -89,10 +89,12 @@ class DatabaseHelper(context: Context) : SQLiteOpenHelper(context, DATABASE_NAME
         }
     }
 
+    // ========== PRODUCT CRUD OPERATIONS ==========
+
     fun getAllProducts(): List<Product> {
         val products = mutableListOf<Product>()
         val db = readableDatabase
-        val cursor = db.rawQuery("SELECT * FROM $TABLE_PRODUCTS", null)
+        val cursor = db.rawQuery("SELECT * FROM $TABLE_PRODUCTS ORDER BY $COLUMN_NAME ASC", null)
 
         cursor.use {
             while (it.moveToNext()) {
@@ -113,6 +115,56 @@ class DatabaseHelper(context: Context) : SQLiteOpenHelper(context, DATABASE_NAME
         return products
     }
 
+    fun getProductById(id: Int): Product? {
+        val db = readableDatabase
+        val cursor = db.rawQuery("SELECT * FROM $TABLE_PRODUCTS WHERE $COLUMN_ID = ?", arrayOf(id.toString()))
+
+        cursor.use {
+            if (it.moveToFirst()) {
+                return Product(
+                    id = it.getInt(it.getColumnIndexOrThrow(COLUMN_ID)),
+                    name = it.getString(it.getColumnIndexOrThrow(COLUMN_NAME)),
+                    description = it.getString(it.getColumnIndexOrThrow(COLUMN_DESCRIPTION)),
+                    price = it.getDouble(it.getColumnIndexOrThrow(COLUMN_PRICE)),
+                    stock = it.getInt(it.getColumnIndexOrThrow(COLUMN_STOCK)),
+                    category = it.getString(it.getColumnIndexOrThrow(COLUMN_CATEGORY)),
+                    imageUrl = it.getString(it.getColumnIndexOrThrow(COLUMN_IMAGE_URL)),
+                    lowStockThreshold = it.getInt(it.getColumnIndexOrThrow(COLUMN_LOW_STOCK_THRESHOLD))
+                )
+            }
+        }
+        return null
+    }
+
+    fun addProduct(product: Product): Long {
+        val db = writableDatabase
+        val values = ContentValues().apply {
+            put(COLUMN_NAME, product.name)
+            put(COLUMN_DESCRIPTION, product.description)
+            put(COLUMN_PRICE, product.price)
+            put(COLUMN_STOCK, product.stock)
+            put(COLUMN_CATEGORY, product.category)
+            put(COLUMN_IMAGE_URL, product.imageUrl)
+            put(COLUMN_LOW_STOCK_THRESHOLD, product.lowStockThreshold)
+        }
+        return db.insert(TABLE_PRODUCTS, null, values)
+    }
+
+    fun updateProduct(product: Product): Boolean {
+        val db = writableDatabase
+        val values = ContentValues().apply {
+            put(COLUMN_NAME, product.name)
+            put(COLUMN_DESCRIPTION, product.description)
+            put(COLUMN_PRICE, product.price)
+            put(COLUMN_STOCK, product.stock)
+            put(COLUMN_CATEGORY, product.category)
+            put(COLUMN_IMAGE_URL, product.imageUrl)
+            put(COLUMN_LOW_STOCK_THRESHOLD, product.lowStockThreshold)
+        }
+        val result = db.update(TABLE_PRODUCTS, values, "$COLUMN_ID = ?", arrayOf(product.id.toString()))
+        return result > 0
+    }
+
     fun updateProductStock(productId: Int, newStock: Int): Boolean {
         val db = writableDatabase
         val values = ContentValues().apply {
@@ -121,6 +173,14 @@ class DatabaseHelper(context: Context) : SQLiteOpenHelper(context, DATABASE_NAME
         val result = db.update(TABLE_PRODUCTS, values, "$COLUMN_ID = ?", arrayOf(productId.toString()))
         return result > 0
     }
+
+    fun deleteProduct(productId: Int): Boolean {
+        val db = writableDatabase
+        val result = db.delete(TABLE_PRODUCTS, "$COLUMN_ID = ?", arrayOf(productId.toString()))
+        return result > 0
+    }
+
+    // ========== SALES OPERATIONS ==========
 
     fun addSale(sale: Sale): Long {
         val db = writableDatabase
@@ -154,5 +214,18 @@ class DatabaseHelper(context: Context) : SQLiteOpenHelper(context, DATABASE_NAME
             }
         }
         return count
+    }
+
+    fun getCategories(): List<String> {
+        val categories = mutableListOf<String>()
+        val db = readableDatabase
+        val cursor = db.rawQuery("SELECT DISTINCT $COLUMN_CATEGORY FROM $TABLE_PRODUCTS ORDER BY $COLUMN_CATEGORY", null)
+
+        cursor.use {
+            while (it.moveToNext()) {
+                categories.add(it.getString(0))
+            }
+        }
+        return categories
     }
 }

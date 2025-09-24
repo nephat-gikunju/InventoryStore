@@ -12,6 +12,7 @@ import androidx.fragment.app.Fragment
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
 import com.google.android.material.dialog.MaterialAlertDialogBuilder
+import com.google.android.material.textfield.TextInputEditText
 import com.inventorystore.R
 import com.inventorystore.adapters.ProductAdapter
 import com.inventorystore.data.DatabaseHelper
@@ -26,10 +27,13 @@ class POSFragment : Fragment() {
     private lateinit var rvAvailableProducts: RecyclerView
     private lateinit var rvCartItems: RecyclerView
     private lateinit var tvTotal: TextView
-    private lateinit var etCustomerName: EditText
+    private lateinit var tvCartItemCount: TextView
+    private lateinit var layoutEmptyCart: View
+    private lateinit var etCustomerName: TextInputEditText
     private lateinit var btnCheckout: Button
+    private lateinit var btnClearCart: Button
 
-    private lateinit var productAdapter: ProductAdapter
+    private lateinit var availableProductsAdapter: ProductAdapter
     private lateinit var cartAdapter: ProductAdapter
     private val cartItems = mutableListOf<CartItem>()
 
@@ -46,32 +50,42 @@ class POSFragment : Fragment() {
 
         initViews(view)
         setupRecyclerViews()
-        loadProducts()
-        updateTotal()
+        setupClickListeners()
+        loadAvailableProducts()
+        updateCartDisplay()
     }
 
     private fun initViews(view: View) {
         rvAvailableProducts = view.findViewById(R.id.rv_available_products)
         rvCartItems = view.findViewById(R.id.rv_cart_items)
         tvTotal = view.findViewById(R.id.tv_total)
+        tvCartItemCount = view.findViewById(R.id.tv_cart_item_count)
+        layoutEmptyCart = view.findViewById(R.id.layout_empty_cart)
         etCustomerName = view.findViewById(R.id.et_customer_name)
         btnCheckout = view.findViewById(R.id.btn_checkout)
-
-        btnCheckout.setOnClickListener { processSale() }
+        btnClearCart = view.findViewById(R.id.btn_clear_cart)
     }
 
     private fun setupRecyclerViews() {
-        productAdapter = ProductAdapter(emptyList()) { product ->
-            addToCart(product)
-        }
+        // Available Products Adapter - for adding to cart
+        availableProductsAdapter = ProductAdapter(
+            products = emptyList(),
+            onProductClick = { product ->
+                addToCart(product)
+            }
+        )
 
-        cartAdapter = ProductAdapter(emptyList()) { product ->
-            removeFromCart(product)
-        }
+        // Cart Items Adapter - for removing from cart
+        cartAdapter = ProductAdapter(
+            products = emptyList(),
+            onProductClick = { product ->
+                showRemoveFromCartOptions(product)
+            }
+        )
 
         rvAvailableProducts.apply {
             layoutManager = LinearLayoutManager(requireContext(), LinearLayoutManager.HORIZONTAL, false)
-            adapter = productAdapter
+            adapter = availableProductsAdapter
         }
 
         rvCartItems.apply {
@@ -80,9 +94,14 @@ class POSFragment : Fragment() {
         }
     }
 
-    private fun loadProducts() {
+    private fun setupClickListeners() {
+        btnCheckout.setOnClickListener { processSale() }
+        btnClearCart.setOnClickListener { clearCart() }
+    }
+
+    private fun loadAvailableProducts() {
         val products = dbHelper.getAllProducts().filter { it.stock > 0 }
-        productAdapter.updateProducts(products)
+        availableProductsAdapter.updateProducts(products)
     }
 
     private fun addToCart(product: Product) {
@@ -90,31 +109,86 @@ class POSFragment : Fragment() {
         if (existingItem != null) {
             if (existingItem.quantity < product.stock) {
                 existingItem.quantity++
+                Toast.makeText(requireContext(), "Added another ${product.name} to cart", Toast.LENGTH_SHORT).show()
             } else {
                 Toast.makeText(requireContext(), "Not enough stock available", Toast.LENGTH_SHORT).show()
                 return
             }
         } else {
             cartItems.add(CartItem(product, 1))
+            Toast.makeText(requireContext(), "Added ${product.name} to cart", Toast.LENGTH_SHORT).show()
         }
         updateCartDisplay()
-        updateTotal()
     }
 
-    private fun removeFromCart(product: Product) {
-        cartItems.removeAll { it.product.id == product.id }
-        updateCartDisplay()
-        updateTotal()
+    private fun showRemoveFromCartOptions(product: Product) {
+        val cartItem = cartItems.find { it.product.id == product.id } ?: return
+
+        val options = if (cartItem.quantity > 1) {
+            arrayOf("Remove 1 item", "Remove all (${cartItem.quantity} items)")
+        } else {
+            arrayOf("Remove from cart")
+        }
+
+        MaterialAlertDialogBuilder(requireContext())
+            .setTitle("Remove ${product.name}")
+            .setItems(options) { _, which ->
+                when (which) {
+                    0 -> {
+                        if (cartItem.quantity > 1) {
+                            cartItem.quantity--
+                            Toast.makeText(requireContext(), "Removed 1 ${product.name} from cart", Toast.LENGTH_SHORT).show()
+                        } else {
+                            cartItems.remove(cartItem)
+                            Toast.makeText(requireContext(), "Removed ${product.name} from cart", Toast.LENGTH_SHORT).show()
+                        }
+                        updateCartDisplay()
+                    }
+                    1 -> {
+                        cartItems.remove(cartItem)
+                        Toast.makeText(requireContext(), "Removed all ${product.name} from cart", Toast.LENGTH_SHORT).show()
+                        updateCartDisplay()
+                    }
+                }
+            }
+            .setNegativeButton("Cancel", null)
+            .show()
     }
 
     private fun updateCartDisplay() {
-        val cartProducts = cartItems.map { it.product }
+        // Update cart items list
+        val cartProducts = cartItems.map { cartItem ->
+            // Create a modified product that shows quantity in the name
+            cartItem.product.copy(
+                name = "${cartItem.product.name} (${cartItem.quantity}x)",
+                stock = cartItem.quantity // Show quantity as stock for display
+            )
+        }
         cartAdapter.updateProducts(cartProducts)
+
+        // Update cart item count
+        val totalItems = cartItems.sumOf { it.quantity }
+        tvCartItemCount.text = "$totalItems item${if (totalItems != 1) "s" else ""}"
+
+        // Show/hide empty cart state
+        if (cartItems.isEmpty()) {
+            rvCartItems.visibility = View.GONE
+            layoutEmptyCart.visibility = View.VISIBLE
+        } else {
+            rvCartItems.visibility = View.VISIBLE
+            layoutEmptyCart.visibility = View.GONE
+        }
+
+        updateTotal()
     }
 
     private fun updateTotal() {
         val total = cartItems.sumOf { it.product.price * it.quantity }
-        tvTotal.text = "Total: ${CurrencyFormatter.format(total)}"
+        tvTotal.text = CurrencyFormatter.format(total)
+
+        // Enable/disable checkout button
+        btnCheckout.isEnabled = cartItems.isNotEmpty()
+        btnCheckout.alpha = if (cartItems.isNotEmpty()) 1.0f else 0.5f
     }
 
     private fun processSale() {
@@ -129,35 +203,66 @@ class POSFragment : Fragment() {
             SaleItem(it.product.id, it.product.name, it.quantity, it.product.price)
         }
 
+        // Show confirmation dialog
         MaterialAlertDialogBuilder(requireContext())
             .setTitle("Confirm Sale")
-            .setMessage("Process sale for ${CurrencyFormatter.format(total)}?")
-            .setPositiveButton("Confirm") { _, _ ->
-                val sale = Sale(customerName = customerName, items = saleItems, total = total)
-                val saleId = dbHelper.addSale(sale)
-
-                if (saleId > 0) {
-                    // Update stock for each item
-                    cartItems.forEach { cartItem ->
-                        val newStock = cartItem.product.stock - cartItem.quantity
-                        dbHelper.updateProductStock(cartItem.product.id, newStock)
-                    }
-
-                    Toast.makeText(requireContext(), "Sale processed successfully!", Toast.LENGTH_SHORT).show()
-                    clearCart()
-                    loadProducts() // Refresh products to show updated stock
-                } else {
-                    Toast.makeText(requireContext(), "Failed to process sale", Toast.LENGTH_SHORT).show()
-                }
+            .setMessage("Process sale for ${CurrencyFormatter.format(total)}?\n\nCustomer: $customerName\nItems: ${cartItems.size} products")
+            .setPositiveButton("Confirm Sale") { _, _ ->
+                completeSale(customerName, saleItems, total)
             }
             .setNegativeButton("Cancel", null)
             .show()
     }
 
+    private fun completeSale(customerName: String, saleItems: List<SaleItem>, total: Double) {
+        val sale = Sale(customerName = customerName, items = saleItems, total = total)
+        val saleId = dbHelper.addSale(sale)
+
+        if (saleId > 0) {
+            // Update stock for each item
+            var allStockUpdated = true
+            cartItems.forEach { cartItem ->
+                val newStock = cartItem.product.stock - cartItem.quantity
+                if (!dbHelper.updateProductStock(cartItem.product.id, newStock)) {
+                    allStockUpdated = false
+                }
+            }
+
+            if (allStockUpdated) {
+                Toast.makeText(requireContext(), "Sale processed successfully!", Toast.LENGTH_LONG).show()
+                clearCart()
+                loadAvailableProducts() // Refresh products to show updated stock
+
+                // Show sale summary
+                showSaleSummary(customerName, total, saleItems.size)
+            } else {
+                Toast.makeText(requireContext(), "Sale saved but some stock updates failed", Toast.LENGTH_LONG).show()
+            }
+        } else {
+            Toast.makeText(requireContext(), "Failed to process sale", Toast.LENGTH_SHORT).show()
+        }
+    }
+
+    private fun showSaleSummary(customerName: String, total: Double, itemCount: Int) {
+        MaterialAlertDialogBuilder(requireContext())
+            .setTitle("Sale Complete! 🎉")
+            .setMessage("Customer: $customerName\nItems: $itemCount\nTotal: ${CurrencyFormatter.format(total)}\n\nThank you for your business!")
+            .setPositiveButton("New Sale") { _, _ ->
+                // Already cleared, ready for new sale
+            }
+            .setCancelable(false)
+            .show()
+    }
+
     private fun clearCart() {
         cartItems.clear()
-        etCustomerName.text.clear()
+        etCustomerName.text?.clear()
         updateCartDisplay()
-        updateTotal()
+        Toast.makeText(requireContext(), "Cart cleared", Toast.LENGTH_SHORT).show()
+    }
+
+    override fun onResume() {
+        super.onResume()
+        loadAvailableProducts() // Refresh products when fragment becomes visible
     }
 }
