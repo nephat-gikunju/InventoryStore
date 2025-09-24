@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="utf-8"?>
+<menu xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <item
+        android:id="@+id/nav_dashboard"
+        android:icon="@drawable/ic_dashboard"
+        android:title="@string/dashboard"
+        android:orderInCategory="1"
+        android:enabled="true"
+        android:visible="true" />
+
+    <item
+        android:id="@+id/nav_inventory"
+        android:icon="@drawable/ic_inventory"
+        android:title="@string/inventory"
+        android:orderInCategory="2"
+        android:enabled="true"
+        android:visible="true" />
+
+    <item
+        android:id="@+id/nav_pos"
+        android:icon="@drawable/ic_point_of_sale"
+        android:title="@string/pos"
+        android:orderInCategory="3"
+        android:enabled="true"
+        android:visible="true" />
+
+    <item
+        android:id="@+id/nav_reports"
+        android:icon="@drawable/ic_reports"
+        android:title="@string/reports"
+        android:orderInCategory="4"
+        android:enabled="true"
+        android:visible="true" />
+
+</menu>
